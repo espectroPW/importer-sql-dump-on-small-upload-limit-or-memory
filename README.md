@@ -11,6 +11,8 @@ Skrypt PHP do importowania plików SQL do bazy danych MySQL/MariaDB z automatycz
 - ✅ **Monitoring postępu** - Pokazuje postęp importu i tworzenia backupu
 - ✅ **Obsługa błędów** - Szczegółowe raportowanie błędów i statystyk
 - ✅ **Bezpieczne przerywanie** - Import zatrzymuje się jeśli backup się nie powiedzie
+- ✅ **Zamiana fraz** - Wyszukiwanie i podmiany tekstów w pliku SQL przed importem
+- ✅ **Przetwarzanie strumieniowe** - Zamiany wykonywane linia po linii bez ładowania całego pliku
 
 ## Wymagania
 
@@ -53,21 +55,82 @@ Otwórz skrypt w przeglądarce i wypełnij formularz. Dane z formularza nadpisz�
 
 3. **Wybierz plik SQL** z listy rozwijanej lub wpisz ścieżkę
 
-4. **Kliknij "Rozpocznij import"**
+4. **[OPCJONALNIE] Skonfiguruj zamiany fraz** - Zobacz sekcję "Zamiana fraz" poniżej
+
+5. **Kliknij "Rozpocznij import"**
+
+## Zamiana fraz w pliku SQL
+
+Nowa funkcjonalność pozwala na automatyczne wyszukiwanie i podmianę fraz w pliku SQL przed importem. Szczególnie przydatne przy migracji z środowiska deweloperskiego na produkcję.
+
+### Jak używać:
+
+1. **W sekcji "Zamiana fraz w pliku SQL"** dodaj pary tekstów do zamiany
+2. **Pole "Znajdź"** - tekst, który ma zostać zastąpiony
+3. **Pole "Zamień na"** - tekst, którym ma zostać zastąpiony
+4. **Kliknij "Dodaj kolejną zamianę"** aby dodać więcej par
+
+### Przykłady zamian:
+
+**Migracja domeny:**
+```
+Znajdź: dev.testowa.pl
+Zamień na: testowa.pl
+```
+
+**Zmiana protokołu:**
+```
+Znajdź: http://localhost:8080
+Zamień na: https://testowa.pl
+```
+
+**Ścieżki do plików:**
+```
+Znajdź: /dev/uploads/
+Zamień na: /uploads/
+```
+
+**Usunięcie prefiksu:**
+```
+Znajdź: dev_prefix_
+Zamień na: (pozostaw puste)
+```
+
+**Prefiksy tabel:**
+```
+Znajdź: dev_wp_
+Zamień na: wp_
+```
+
+### Zalety funkcji zamian:
+
+- **Pamięciowo efektywna** - przetwarzanie linia po linii
+- **Bezpieczna** - tworzy plik tymczasowy, nie modyfikuje oryginału
+- **Szczegółowe raporty** - pokazuje ile zamian zostało wykonanych
+- **Automatyczne sprzątanie** - usuwa pliki tymczasowe po imporcie
+- **Monitoring postępu** - pokazuje postęp dla dużych plików
 
 ## Proces importu
 
 1. **Walidacja** - Sprawdzenie danych połączenia i istnienia pliku
 2. **Połączenie** - Nawiązanie połączenia z bazą danych
 3. **Backup** - Tworzenie dumpu aktualnej bazy danych
-4. **Import** - Wykonywanie zapytań SQL z wybranego pliku
-5. **Raport** - Wyświetlenie statystyk i ewentualnych błędów
+4. **[NOWE] Przetwarzanie** - Wykonywanie zamian fraz w pliku SQL (jeśli skonfigurowane)
+5. **Import** - Wykonywanie zapytań SQL z przetworzonego pliku
+6. **Sprzątanie** - Usunięcie plików tymczasowych
+7. **Raport** - Wyświetlenie statystyk i ewentualnych błędów
 
-## Nazewnictwo plików backup
+## Nazewnictwo plików
 
-Pliki backup są tworzone w formacie:
+**Pliki backup:**
+```
+dump_mojabaza_2024-01-15_14-30-25.sql
+```
 
-Przykład: `dump_mojabaza_2024-01-15_14-30-25.sql`
+**Pliki tymczasowe (automatycznie usuwane):**
+```
+processed_dump_2024-01-15_14-30-25.sql
+```
 
 ## Optymalizacja
 
@@ -77,6 +140,8 @@ Skrypt jest zoptymalizowany do pracy z dużymi bazami danych:
 - **Czas wykonania**: 300 sekund (5 minut)
 - **Przetwarzanie porcjami**: 1000 rekordów na raz
 - **Zapis strumieniowy**: Dane zapisywane bezpośrednio do pliku
+- **Zamiany strumieniowe**: Przetwarzanie zamian linia po linii
+- **Postęp w czasie rzeczywistym**: Aktualizacje co 10,000 linii
 
 ## Bezpieczeństwo
 
@@ -84,3 +149,21 @@ Skrypt jest zoptymalizowany do pracy z dużymi bazami danych:
 - ⚠️ **Nie pozostawiaj skryptu** na serwerze produkcyjnym po użyciu
 - ⚠️ **Chroń dane logowania** - usuń je z kodu po zakończeniu
 - ⚠️ **Ogranicz dostęp** do katalogu ze skryptem
+- ⚠️ **Testuj zamiany** - sprawdź wyniki zamian na kopii przed produkcją
+
+## Przykłady użycia
+
+### Migracja WordPress z dev na produkcję:
+```
+dev.mojstrona.pl → mojstrona.pl
+http://dev.mojstrona.pl → https://mojstrona.pl
+/dev/wp-content/uploads/ → /wp-content/uploads/
+dev_wp_ → wp_
+```
+
+### Migracja lokalnego środowiska:
+```
+localhost:8080 → mojstrona.pl
+http://localhost → https://mojstrona.pl
+C:\xampp\htdocs\projekt\ → /home/user/public_html/
+```

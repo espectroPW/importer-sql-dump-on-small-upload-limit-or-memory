@@ -14,6 +14,94 @@ $user = '';
 $pass = '';
 $db   = '';
 
+// Funkcja do przetwarzania pliku SQL (zamiana fraz)
+function processSQLFile($source_file, $find_replace_pairs) {
+    if (empty($find_replace_pairs)) {
+        return $source_file; // Jeśli nie ma żadnych zamian, zwróć oryginalny plik
+    }
+    
+    $timestamp = date('Y-m-d_H-i-s');
+    $processed_file = 'processed_' . basename($source_file, '.sql') . '_' . $timestamp . '.sql';
+    
+    echo "<p>Przetwarzanie pliku SQL - wykonywanie zamian...</p>";
+    
+    // Otwórz plik źródłowy do odczytu
+    $source_handle = fopen($source_file, 'r');
+    if (!$source_handle) {
+        echo "<p style='color: red;'><strong>Błąd podczas otwierania pliku SQL do odczytu!</strong></p>";
+        return false;
+    }
+    
+    // Otwórz plik docelowy do zapisu
+    $target_handle = fopen($processed_file, 'w');
+    if (!$target_handle) {
+        echo "<p style='color: red;'><strong>Błąd podczas tworzenia przetworzonego pliku!</strong></p>";
+        fclose($source_handle);
+        return false;
+    }
+    
+    $replacements_made = 0;
+    $lines_processed = 0;
+    $replacement_counts = array();
+    
+    // Inicjalizuj liczniki dla każdej pary zamian
+    foreach ($find_replace_pairs as $index => $pair) {
+        $replacement_counts[$index] = 0;
+    }
+    
+    // Przetwarzaj plik linia po linii
+    while (($line = fgets($source_handle)) !== false) {
+        $original_line = $line;
+        
+        // Wykonaj zamiany na aktualnej linii
+        foreach ($find_replace_pairs as $index => $pair) {
+            $find = $pair['find'];
+            $replace = $pair['replace'];
+            
+            if (!empty($find)) {
+                $count = 0;
+                $line = str_replace($find, $replace, $line, $count);
+                if ($count > 0) {
+                    $replacement_counts[$index] += $count;
+                    $replacements_made += $count;
+                }
+            }
+        }
+        
+        // Zapisz przetworzoną linię
+        fwrite($target_handle, $line);
+        
+        $lines_processed++;
+        
+        // Pokaż postęp co 10000 linii
+        if ($lines_processed % 10000 == 0) {
+            echo "<p>Przetworzono $lines_processed linii...</p>";
+            @ob_flush(); @flush();
+        }
+    }
+    
+    fclose($source_handle);
+    fclose($target_handle);
+    
+    // Pokaż wyniki zamian
+    if ($replacements_made > 0) {
+        echo "<p><strong>Wykonano zamiany:</strong></p>";
+        foreach ($find_replace_pairs as $index => $pair) {
+            $count = $replacement_counts[$index];
+            if ($count > 0) {
+                echo "<p>• <strong>$count</strong> wystąpień: <code>" . htmlspecialchars($pair['find']) . "</code> → <code>" . htmlspecialchars($pair['replace']) . "</code></p>";
+            }
+        }
+        echo "<p><strong>Przetworzono plik:</strong> $processed_file (łącznie $replacements_made zamian w $lines_processed liniach)</p>";
+        return $processed_file;
+    } else {
+        // Jeśli nie było żadnych zamian, usuń przetworzony plik i użyj oryginalnego
+        unlink($processed_file);
+        echo "<p><strong>Brak zamian do wykonania</strong> - używam oryginalnego pliku (przetworzono $lines_processed linii)</p>";
+        return $source_file;
+    }
+}
+
 // Funkcja do tworzenia dumpu
 function createDump($conn, $db) {
     $timestamp = date('Y-m-d_H-i-s');
@@ -94,6 +182,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $db = $_POST['db'] ?? $db;
     $sql_file = $_POST['sql_file'] ?? '';
     
+    // Pobierz pary zamian
+    $find_replace_pairs = array();
+    if (isset($_POST['find']) && isset($_POST['replace'])) {
+        for ($i = 0; $i < count($_POST['find']); $i++) {
+            $find = trim($_POST['find'][$i] ?? '');
+            $replace = trim($_POST['replace'][$i] ?? '');
+            if (!empty($find)) {
+                $find_replace_pairs[] = array('find' => $find, 'replace' => $replace);
+            }
+        }
+    }
+    
     if (empty($user) || empty($db) || empty($sql_file)) {
         echo "<p style='color: red;'><strong>Wszystkie pola są wymagane!</strong></p>";
     } else {
@@ -118,10 +218,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 exit;
             }
             
-            // Otwórz plik SQL do odczytu
-            $handle = fopen($sql_file, "r");
+            // Przetwórz plik SQL (wykonaj zamiany)
+            $processed_file = processSQLFile($sql_file, $find_replace_pairs);
+            if ($processed_file === false) {
+                echo "<p style='color: red;'><strong>Przerwano import - błąd podczas przetwarzania pliku!</strong></p>";
+                $conn->close();
+                exit;
+            }
+            
+            // Otwórz przetworzony plik SQL do odczytu
+            $handle = fopen($processed_file, "r");
             if (!$handle) {
-                echo "<p style='color: red;'><strong>Nie udało się otworzyć pliku SQL.</strong></p>";
+                echo "<p style='color: red;'><strong>Nie udało się otworzyć przetworzonego pliku SQL.</strong></p>";
                 $conn->close();
                 exit;
             }
@@ -159,6 +267,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
             
             fclose($handle);
+            
+            // Usuń przetworzony plik tymczasowy jeśli jest inny niż oryginalny
+            if ($processed_file !== $sql_file && file_exists($processed_file)) {
+                unlink($processed_file);
+                echo "<p><em>Usunięto plik tymczasowy: $processed_file</em></p>";
+            }
+            
             $conn->close();
             
             echo "<p><strong>Import zakończony.</strong></p>";
@@ -204,6 +319,11 @@ foreach ($files as $file) {
             cursor: pointer; 
         }
         button:hover { background: #005a87; }
+        .btn-secondary {
+            background: #6c757d;
+            margin-left: 10px;
+        }
+        .btn-secondary:hover { background: #545b62; }
         .warning { 
             background: #fff3cd; 
             border: 1px solid #ffeaa7; 
@@ -217,6 +337,34 @@ foreach ($files as $file) {
             padding: 15px; 
             border-radius: 4px; 
             margin-bottom: 20px; 
+        }
+        .replace-section {
+            background: #f8f9fa;
+            border: 1px solid #e9ecef;
+            padding: 15px;
+            border-radius: 4px;
+            margin-bottom: 20px;
+        }
+        .replace-pair {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 10px;
+            align-items: center;
+        }
+        .replace-pair input {
+            width: 200px;
+        }
+        .replace-pair button {
+            padding: 5px 10px;
+            font-size: 12px;
+        }
+        .examples {
+            background: #e7f3ff;
+            border: 1px solid #b8daff;
+            padding: 10px;
+            border-radius: 4px;
+            margin-top: 10px;
+            font-size: 12px;
         }
     </style>
 </head>
@@ -267,6 +415,30 @@ foreach ($files as $file) {
             <?php endif; ?>
         </div>
         
+        <div class="replace-section">
+            <h3>🔄 Zamiana fraz w pliku SQL (opcjonalne)</h3>
+            <p>Możesz zastąpić określone frazy przed importem. Przydatne przy migracji z dev na produkcję.</p>
+            
+            <div id="replace-pairs">
+                <div class="replace-pair">
+                    <input type="text" name="find[]" placeholder="Znajdź (np. dev.testowa.pl)">
+                    <span>→</span>
+                    <input type="text" name="replace[]" placeholder="Zamień na (np. testowa.pl)">
+                    <button type="button" onclick="removeReplacePair(this)" class="btn-secondary">Usuń</button>
+                </div>
+            </div>
+            
+            <button type="button" onclick="addReplacePair()" class="btn-secondary">Dodaj kolejną zamianę</button>
+            
+            <div class="examples">
+                <strong>Przykłady zamian:</strong><br>
+                • <code>dev.testowa.pl</code> → <code>testowa.pl</code><br>
+                • <code>http://localhost:8080</code> → <code>https://testowa.pl</code><br>
+                • <code>/dev/uploads/</code> → <code>/uploads/</code><br>
+                • <code>dev_prefix_</code> → <code></code> (usunięcie prefiksu)
+            </div>
+        </div>
+        
         <button type="submit">Rozpocznij import</button>
     </form>
     
@@ -278,5 +450,27 @@ foreach ($files as $file) {
             <?php endforeach; ?>
         </ul>
     <?php endif; ?>
+    
+    <script>
+        function addReplacePair() {
+            const container = document.getElementById('replace-pairs');
+            const div = document.createElement('div');
+            div.className = 'replace-pair';
+            div.innerHTML = `
+                <input type="text" name="find[]" placeholder="Znajdź (np. dev.testowa.pl)">
+                <span>→</span>
+                <input type="text" name="replace[]" placeholder="Zamień na (np. testowa.pl)">
+                <button type="button" onclick="removeReplacePair(this)" class="btn-secondary">Usuń</button>
+            `;
+            container.appendChild(div);
+        }
+        
+        function removeReplacePair(button) {
+            const container = document.getElementById('replace-pairs');
+            if (container.children.length > 1) {
+                button.parentElement.remove();
+            }
+        }
+    </script>
 </body>
 </html>
