@@ -66,3 +66,21 @@ Otwórz skrypt w przeglądarce i wypełnij formularz. Dane z formularza nadpisz�
 ## Nazewnictwo plików backup
 
 Pliki backup są tworzone w formacie:
+
+Przykład: `dump_mojabaza_2024-01-15_14-30-25.sql`
+
+## Optymalizacja
+
+Skrypt jest zoptymalizowany do pracy z dużymi bazami danych:
+
+- **Limit pamięci**: 512MB
+- **Czas wykonania**: 300 sekund (5 minut)
+- **Przetwarzanie porcjami**: 1000 rekordów na raz
+- **Zapis strumieniowy**: Dane zapisywane bezpośrednio do pliku
+
+## Bezpieczeństwo
+
+- ⚠️ **Zawsze rób backup** przed użyciem skryptu
+- ⚠️ **Nie pozostawiaj skryptu** na serwerze produkcyjnym po użyciu
+- ⚠️ **Chroń dane logowania** - usuń je z kodu po zakończeniu
+- ⚠️ **Ogranicz dostęp** do katalogu ze skryptem
